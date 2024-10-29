@@ -1,101 +1,189 @@
-import Image from "next/image";
+'use client';
+
+import { Avatar } from '@/components/catalyst/avatar';
+import { Button } from '@/components/catalyst/button';
+import {
+  Dialog,
+  DialogActions,
+  DialogBody,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/catalyst/dialog';
+import { Input, InputGroup } from '@/components/catalyst/input';
+import { Navbar } from '@/components/catalyst/navbar';
+import {
+  Sidebar,
+  SidebarBody,
+  SidebarHeader,
+  SidebarHeading,
+  SidebarItem,
+  SidebarLabel,
+  SidebarSection,
+} from '@/components/catalyst/sidebar';
+import { SidebarLayout } from '@/components/catalyst/sidebar-layout';
+import { EventType, getEvents } from '@/data';
+import { UTCDate } from '@date-fns/utc';
+import {
+  BuildingLibraryIcon,
+  CalendarDaysIcon,
+  CalendarIcon,
+  MagnifyingGlassIcon,
+  MusicalNoteIcon,
+  PaintBrushIcon,
+  TicketIcon,
+} from '@heroicons/react/20/solid';
+import { format, isSameDay, isSameMonth, isSameYear } from 'date-fns';
+import React, { useEffect, useState } from 'react';
+import AutoSizer from 'react-virtualized-auto-sizer';
+
+import { Timeline } from './timeline';
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [category, setCategory] = useState('');
+  const [event, setEvent] = useState<EventType>();
+  const [events, setEvents] = useState<EventType[]>([]);
+  const [filter, setFilter] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const [view, setView] = useState('Day');
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+  const fetchData = async () => {
+    const data = await getEvents(category, filter);
+    setEvents(data);
+  };
+
+  const formatDates = (event: EventType) => {
+    const startDate = new UTCDate(event.start);
+    const endDate = new UTCDate(event.end);
+
+    if (isSameDay(startDate, endDate)) {
+      return `${format(startDate, 'd MMMM yyyy, h:mm a')} – ${format(endDate, 'h:mm a')}`;
+    } else if (isSameMonth(startDate, endDate)) {
+      return `${format(startDate, 'd')}–${format(endDate, 'd MMMM yyyy')}`;
+    } else if (isSameYear(startDate, endDate)) {
+      return `${format(startDate, 'd MMMM')} – ${format(endDate, 'd MMMM yyyy')}`;
+    } else {
+      return `${format(startDate, 'd MMMM yyyy')} – ${format(endDate, 'd MMMM yyyy')}`;
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [category, filter]);
+  return (
+    <SidebarLayout
+      navbar={<Navbar></Navbar>}
+      sidebar={
+        <Sidebar>
+          <SidebarHeader>
+            <SidebarItem>
+              <Avatar
+                initials="le"
+                className="size-6 bg-zinc-900 text-white dark:bg-white dark:text-black"
+              />
+              <SidebarLabel>London Events</SidebarLabel>
+            </SidebarItem>
+          </SidebarHeader>
+          <SidebarBody>
+            <SidebarSection>
+              <InputGroup>
+                <MagnifyingGlassIcon />
+                <Input
+                  name="filter"
+                  placeholder="Filter events&hellip;"
+                  aria-label="Filter"
+                  onChange={(e) => setFilter(e.target.value)}
+                />
+              </InputGroup>
+            </SidebarSection>
+            <SidebarSection>
+              <SidebarHeading>View</SidebarHeading>
+              <SidebarItem
+                current={view === 'Hour'}
+                onClick={() => setView('Hour')}
+              >
+                {view === 'Hour' ? <CalendarDaysIcon /> : <CalendarIcon />}
+                <SidebarLabel>Hour</SidebarLabel>
+              </SidebarItem>
+              <SidebarItem
+                current={view === 'Day'}
+                onClick={() => setView('Day')}
+              >
+                {view === 'Day' ? <CalendarDaysIcon /> : <CalendarIcon />}
+                <SidebarLabel>Day</SidebarLabel>
+              </SidebarItem>
+              <SidebarItem
+                current={view === 'Month'}
+                onClick={() => setView('Month')}
+              >
+                {view === 'Month' ? <CalendarDaysIcon /> : <CalendarIcon />}
+                <SidebarLabel>Month</SidebarLabel>
+              </SidebarItem>
+            </SidebarSection>
+            <SidebarSection>
+              <SidebarHeading>Category</SidebarHeading>
+              <SidebarItem
+                current={category === ''}
+                onClick={() => setCategory('')}
+              >
+                <TicketIcon />
+                <SidebarLabel>All Events</SidebarLabel>
+              </SidebarItem>
+              <SidebarItem
+                current={category === 'Art'}
+                onClick={() => setCategory('Art')}
+              >
+                <PaintBrushIcon />
+                <SidebarLabel>Art</SidebarLabel>
+              </SidebarItem>
+              <SidebarItem
+                current={category === 'Music'}
+                onClick={() => setCategory('Music')}
+              >
+                <MusicalNoteIcon />
+                <SidebarLabel>Music</SidebarLabel>
+              </SidebarItem>
+              <SidebarItem
+                current={category === 'Theatre'}
+                onClick={() => setCategory('Theatre')}
+              >
+                <BuildingLibraryIcon />
+                <SidebarLabel>Theatre</SidebarLabel>
+              </SidebarItem>
+            </SidebarSection>
+          </SidebarBody>
+        </Sidebar>
+      }
+    >
+      <div className="absolute inset-0">
+        <AutoSizer>
+          {({ height, width }) => (
+            <Timeline
+              height={height}
+              width={width}
+              indexWidth={width >= 760 ? 240 : 120}
+              columnWidth={120}
+              rowHeight={60}
+              overscanColumnCount={1}
+              events={events}
+              view={view}
+              setEvent={setEvent}
+              setIsOpen={setIsOpen}
+            ></Timeline>
+          )}
+        </AutoSizer>
+      </div>
+      {event && (
+        <Dialog open={isOpen} onClose={setIsOpen}>
+          <DialogTitle>{event.title}</DialogTitle>
+          <DialogDescription>{event.venue}</DialogDescription>
+          <DialogBody>{formatDates(event)}</DialogBody>
+          <DialogActions>
+            <Button plain onClick={() => setIsOpen(false)}>
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+    </SidebarLayout>
   );
 }
