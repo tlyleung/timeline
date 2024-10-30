@@ -39,15 +39,17 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { Timeline } from './timeline';
 
 export default function Home() {
-  const [category, setCategory] = useState('');
-  const [event, setEvent] = useState<EventType>();
+  const [category, setCategory] = useState<'Art' | 'Music' | 'Theatre' | ''>(
+    '',
+  );
+  const [event, setEvent] = useState<EventType | null>(null);
   const [events, setEvents] = useState<EventType[]>([]);
   const [filter, setFilter] = useState('');
-  const [isOpen, setIsOpen] = useState(false);
-  const [view, setView] = useState('Day');
+  // const [isOpen, setIsOpen] = useState(false);
+  const [view, setView] = useState<'Hour' | 'Day' | 'Month'>('Day');
 
   const fetchData = async () => {
-    const data = await getEvents(category, filter);
+    const data: EventType[] = await getEvents(category, filter);
     setEvents(data);
   };
 
@@ -161,24 +163,23 @@ export default function Home() {
               height={height}
               width={width}
               indexWidth={width >= 760 ? 240 : 120}
-              columnWidth={120}
               rowHeight={60}
-              overscanColumnCount={1}
+              overscanCount={2}
+              columnWidth={120}
               events={events}
               view={view}
               setEvent={setEvent}
-              setIsOpen={setIsOpen}
             ></Timeline>
           )}
         </AutoSizer>
       </div>
       {event && (
-        <Dialog open={isOpen} onClose={setIsOpen}>
+        <Dialog open={event != null} onClose={() => setEvent(null)}>
           <DialogTitle>{event.title}</DialogTitle>
           <DialogDescription>{event.venue}</DialogDescription>
           <DialogBody>{formatDates(event)}</DialogBody>
           <DialogActions>
-            <Button plain onClick={() => setIsOpen(false)}>
+            <Button plain onClick={() => setEvent(null)}>
               Close
             </Button>
           </DialogActions>

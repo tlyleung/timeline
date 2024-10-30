@@ -2,13 +2,13 @@
 
 import { EventType } from '@/data';
 import { UTCDate } from '@date-fns/utc';
+import clsx from 'clsx';
 import {
-  addDays,
-  addHours,
   addMonths,
   differenceInCalendarMonths,
   endOfMonth,
   format,
+  getDaysInMonth,
   startOfDay,
   startOfHour,
   startOfMonth,
@@ -16,6 +16,7 @@ import {
 import React, {
   forwardRef,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -25,14 +26,26 @@ import {
   GridChildComponentProps,
 } from 'react-window';
 
+const CATEGORY_COLOURS = { Art: 'red', Music: 'green', Theatre: 'blue' };
+const COLUMN_COUNT = { Hour: 365 * 24, Day: 366, Month: 12 };
+
 const MILLISECONDS_PER_HOUR = 60 * 60 * 1000;
 const MILLISECONDS_PER_DAY = 24 * MILLISECONDS_PER_HOUR;
 
-const CELL_CLASS_NAME =
-  'box-border content-center items-center justify-center overflow-hidden text-ellipsis whitespace-nowrap border-b border-r border-zinc-950/5 border-l-zinc-950/5 px-2 lg:bg-white dark:border-white/5 dark:border-r-white/5 dark:bg-zinc-900';
-
-const Cell = ({ style }: GridChildComponentProps) => (
-  <div style={style} className={CELL_CLASS_NAME}></div>
+const Cell = ({ style, data }: GridChildComponentProps) => (
+  <div
+    style={style}
+    className={clsx(
+      // Base layout
+      'z-10 box-border content-center items-center justify-center overflow-hidden text-ellipsis whitespace-nowrap',
+      // Border
+      'border-b border-r border-zinc-950/5 border-l-zinc-950/5 px-2 dark:border-white/5 dark:border-r-white/5',
+      // Background
+      'lg:bg-white dark:bg-zinc-900',
+    )}
+  >
+    {data}
+  </div>
 );
 
 const Event = ({
@@ -42,64 +55,144 @@ const Event = ({
   event,
   isFullWidth,
   setEvent,
-  setIsOpen,
 }: {
-  category: string;
+  category: 'Art' | 'Music' | 'Theatre';
   style: React.CSSProperties;
   children: React.ReactNode;
   event: EventType;
   isFullWidth: boolean;
   setEvent: (event: EventType) => void;
-  setIsOpen: (isOpen: boolean) => void;
 }) => {
-  let colour;
-  switch (category) {
-    case 'Art':
-      colour = 'red';
-      break;
-    case 'Music':
-      colour = 'green';
-      break;
-    case 'Theatre':
-      colour = 'blue';
-      break;
-    default:
-      colour = 'zinc';
-      break;
-  }
-
+  const colour = CATEGORY_COLOURS[category];
   return (
     <div
       style={style}
-      className={`absolute z-10 box-border flex cursor-pointer items-center justify-center overflow-hidden whitespace-nowrap bg-${colour}-500/15 text-center text-${colour}-700 group-data-[hover]:bg-${colour}-500/25 dark:bg-${colour}-500/10 dark:text-${colour}-400 dark:group-data-[hover]:bg-${colour}-500/20`}
+      className={clsx(
+        // Base layout
+        `absolute z-10 box-border flex cursor-pointer items-center justify-center overflow-hidden whitespace-nowrap text-center text-${colour}-700 group-data-[hover]:bg-${colour}-500/25 dark:text-${colour}-400 dark:group-data-[hover]:bg-${colour}-500/20`,
+        // Background
+        `bg-${colour}-500/15 dark:bg-${colour}-500/10`,
+      )}
       onClick={() => {
         setEvent(event);
-        setIsOpen(true);
       }}
     >
-      {children}
+      {children} {isFullWidth ? 'True' : 'False'}
     </div>
   );
 };
 
-// Helper to get a date offset from today
-const getOffsetDate = (index: number, view: string) => {
-  const baseDate = new UTCDate();
+const addFractionalHours = (date: Date, fractionalHours: number): Date => {
+  return new UTCDate(date.getTime() + fractionalHours * MILLISECONDS_PER_HOUR);
+};
+
+const addFractionalDays = (date: Date, fractionalDays: number): Date => {
+  return new UTCDate(date.getTime() + fractionalDays * MILLISECONDS_PER_DAY);
+};
+
+const addFractionalMonths = (date: Date, fractionalMonths: number): Date => {
+  const wholeMonths = Math.floor(fractionalMonths);
+  let fractionalMonth = fractionalMonths - wholeMonths;
+
+  // Add the integer part of months
+  let resultDate = addMonths(date, wholeMonths);
+
+  // Calculate how many fractional days the current month can accommodate
+  let daysInMonth = getDaysInMonth(resultDate);
+  const remainingTimeInCurrentMonth =
+    endOfMonth(resultDate).getTime() - resultDate.getTime();
+  const maxFractionalInCurrentMonth =
+    remainingTimeInCurrentMonth / daysInMonth / MILLISECONDS_PER_DAY;
+
+  // If the fractional month doesn't fit in the remaining days of the current month
+  if (fractionalMonth > maxFractionalInCurrentMonth) {
+    fractionalMonth -= maxFractionalInCurrentMonth;
+    resultDate = startOfMonth(addMonths(resultDate, 1));
+    daysInMonth = getDaysInMonth(resultDate);
+  }
+
+  return addFractionalDays(resultDate, fractionalMonth * daysInMonth);
+};
+
+// Helper to get column index from date
+const getColumnIndex = (
+  date: Date,
+  anchorDate: Date,
+  view: 'Hour' | 'Day' | 'Month',
+): number => {
+  const offsetIndex = COLUMN_COUNT[view] / 2;
   switch (view) {
     case 'Hour':
-      return addHours(startOfHour(baseDate), index - 500);
+      return (
+        offsetIndex +
+        (date.getTime() - startOfHour(anchorDate).getTime()) /
+          MILLISECONDS_PER_HOUR
+      );
     case 'Day':
-      return addDays(startOfDay(baseDate), index - 500);
+      return (
+        offsetIndex +
+        (date.getTime() - startOfDay(anchorDate).getTime()) /
+          MILLISECONDS_PER_DAY
+      );
     case 'Month':
-      return addMonths(startOfMonth(baseDate), index - 500);
+      const wholeMonths = differenceInCalendarMonths(
+        date,
+        startOfMonth(anchorDate),
+      );
+      const startOfTargetMonth = startOfMonth(
+        addMonths(startOfMonth(anchorDate), wholeMonths),
+      );
+      const endOfTargetMonth = endOfMonth(startOfTargetMonth);
+      const remainingTimeInTargetMonth =
+        date.getTime() - startOfTargetMonth.getTime();
+      const timeInTargetMonth =
+        endOfTargetMonth.getTime() - startOfTargetMonth.getTime();
+      return (
+        offsetIndex -
+        wholeMonths +
+        remainingTimeInTargetMonth / timeInTargetMonth
+      );
     default:
-      return baseDate;
+      return offsetIndex;
+  }
+};
+
+// Helper to get date from fractional columnIndex
+const getDate = (
+  columnIndex: number,
+  anchorDate: Date,
+  view: 'Hour' | 'Day' | 'Month',
+): Date => {
+  const offsetIndex = COLUMN_COUNT[view] / 2;
+  switch (view) {
+    case 'Hour':
+      return addFractionalHours(
+        startOfHour(anchorDate),
+        columnIndex - offsetIndex,
+      );
+    case 'Day':
+      return addFractionalDays(
+        startOfDay(anchorDate),
+        columnIndex - offsetIndex,
+      );
+    case 'Month': {
+      return addFractionalMonths(
+        startOfMonth(anchorDate),
+        columnIndex - offsetIndex,
+      );
+    }
+    default:
+      return anchorDate;
   }
 };
 
 // Header functions for each view
-const getHeader = (index: number, view: string) => {
-  const date = getOffsetDate(index, view);
+const getHeader = (
+  columnIndex: number,
+  anchorDate: Date,
+  view: 'Hour' | 'Day' | 'Month',
+): string => {
+  const date = getDate(columnIndex, anchorDate, view);
   switch (view) {
     case 'Hour':
       return format(date, 'h a');
@@ -113,8 +206,12 @@ const getHeader = (index: number, view: string) => {
 };
 
 // Label functions for each view
-const getLabel = (index: number, view: string) => {
-  const date = getOffsetDate(index, view);
+const getLabel = (
+  columnIndex: number,
+  anchorDate: Date,
+  view: 'Hour' | 'Day' | 'Month',
+): string => {
+  const date = getDate(columnIndex, anchorDate, view);
   switch (view) {
     case 'Hour':
       return format(date, 'd MMM yyyy');
@@ -127,70 +224,61 @@ const getLabel = (index: number, view: string) => {
   }
 };
 
-// Function to calculate time differences in each view
-const getTimeDifference = (start: Date, end: Date, view: string) => {
-  switch (view) {
-    case 'Month': // Note: months have different lengths
-      const wholeMonths = differenceInCalendarMonths(end, start);
-      const startOfEndMonth = startOfMonth(addMonths(start, wholeMonths));
-      const endOfEndMonth = endOfMonth(startOfEndMonth);
-      const remainingMs = end.getTime() - startOfEndMonth.getTime();
-      const endMonthMs = endOfEndMonth.getTime() - startOfEndMonth.getTime();
-      return wholeMonths + remainingMs / endMonthMs;
-    case 'Day':
-      return (end.getTime() - start.getTime()) / MILLISECONDS_PER_DAY;
-    case 'Hour':
-      return (end.getTime() - start.getTime()) / MILLISECONDS_PER_HOUR;
-    default:
-      return 0;
-  }
-};
-
 export function Timeline({
   height,
   width,
   rowHeight,
   indexWidth,
   columnWidth,
-  overscanColumnCount,
+  overscanCount,
   events,
   view,
   setEvent,
-  setIsOpen,
 }: {
   height: number;
   width: number;
   rowHeight: number;
   indexWidth: number;
   columnWidth: number;
-  overscanColumnCount: number;
+  overscanCount: number;
   events: EventType[];
-  view: string;
+  view: 'Hour' | 'Day' | 'Month';
   setEvent: (event: EventType) => void;
-  setIsOpen: (isOpen: boolean) => void;
 }) {
-  const [scrollPos, setScrollPos] = useState({
-    scrollLeft: 500 * columnWidth,
-    scrollTop: 0,
-  });
+  const [scroll, setScroll] = useState({ left: 0, top: 0 });
+  const [currentDate, setCurrentDate] = useState<Date>(new UTCDate());
   const gridRef = useRef<Grid>(null);
+
+  const anchorDate = new UTCDate();
 
   const venues = useMemo(
     () => Array.from(new Set(events.map((event) => event.venue))).sort(),
-    [events],
+    [events, view],
   );
+
+  const rowCount = venues.length; // not including sticky cells
+  const columnCount = COLUMN_COUNT[view]; // not including sticky cells
+
+  const fromColumn = scroll.left / columnWidth; // minimum column index not including sticky cells
+  const toColumn = (scroll.left + width - indexWidth) / columnWidth; // maximum column index not including sticky cells (not inclusive)
+  const fromRow = scroll.top / rowHeight; // minimum row index not including sticky cells
+  const toRow = (scroll.top + height - rowHeight) / rowHeight; // maximum row index not including sticky cells (not inclusive)
+
+  useEffect(() => {
+    const columnIndex = (fromColumn + toColumn) / 2;
+    const newCurrentDate = getDate(columnIndex, anchorDate, view);
+    setCurrentDate(newCurrentDate);
+    console.log({ type: 'row', from: fromRow, to: toRow });
+    console.log({ type: 'column', from: fromColumn, to: toColumn });
+    console.log(newCurrentDate.toUTCString());
+  }, [scroll.left, view]);
 
   const handleScroll = useCallback(
     ({ scrollLeft, scrollTop }: { scrollLeft: number; scrollTop: number }) => {
-      setScrollPos({ scrollLeft, scrollTop });
+      setScroll({ left: scrollLeft, top: scrollTop });
     },
     [],
   );
-
-  const fromColumn = scrollPos.scrollLeft / columnWidth;
-  const toColumn = (scrollPos.scrollLeft + width) / columnWidth;
-  const fromRow = scrollPos.scrollTop / rowHeight;
-  const toRow = (scrollPos.scrollTop + height) / rowHeight;
 
   const innerElementType = forwardRef(
     (
@@ -200,17 +288,19 @@ export function Timeline({
       }: { children: React.ReactNode; style: React.CSSProperties },
       ref: React.Ref<HTMLDivElement>,
     ) => {
-      const cells = (
+      const newChildren = (
         children as React.ReactElement<GridChildComponentProps<any>>[]
       ).filter(
         (child) => child.props.rowIndex > 0 && child.props.columnIndex > 0,
       );
 
       // Add top-left corner sticky cell
-      cells.push(
-        <div
-          key="0:0"
-          className={`${CELL_CLASS_NAME} border-t lg:border-t-0`}
+      // console.log(`0:0`);
+      newChildren.push(
+        <Cell
+          rowIndex={0}
+          columnIndex={0}
+          data={getLabel(fromColumn, anchorDate, view)}
           style={{
             display: 'inline-flex',
             position: 'sticky',
@@ -220,24 +310,24 @@ export function Timeline({
             left: 0,
             zIndex: 30,
           }}
-        >
-          {getLabel(Math.floor(fromColumn + 2), view)}
-        </div>,
+        />,
       );
 
       // Add sticky header row cells
       for (
         let col = Math.floor(fromColumn);
-        col <= Math.ceil(toColumn);
+        col < Math.min(Math.ceil(toColumn), columnCount);
         col++
       ) {
         const marginLeft =
-          col === Math.floor(fromColumn) ? columnWidth * (col - 1) : undefined;
+          col === Math.floor(fromColumn) ? columnWidth * col : undefined;
 
-        cells.push(
-          <div
-            key={`0:${col}`}
-            className={`${CELL_CLASS_NAME} border-t lg:border-t-0`}
+        // console.log(`0:${col + 1}`);
+        newChildren.push(
+          <Cell
+            rowIndex={0}
+            columnIndex={col + 1}
+            data={getHeader(col, anchorDate, view)}
             style={{
               display: 'inline-flex',
               position: 'sticky',
@@ -247,25 +337,25 @@ export function Timeline({
               marginLeft,
               zIndex: 20,
             }}
-          >
-            {getHeader(col - 1, view)}
-          </div>,
+          />,
         );
       }
 
       // Add sticky left column cells
       for (
-        let row = Math.max(1, Math.floor(fromRow));
-        row <= Math.min(toRow, venues.length);
+        let row = Math.floor(fromRow);
+        row < Math.min(Math.ceil(toRow), rowCount);
         row++
       ) {
         const marginTop =
-          row === Math.floor(fromRow) ? rowHeight * (row - 1) : undefined;
+          row === Math.floor(fromRow) ? rowHeight * row : undefined;
 
-        cells.push(
-          <div
-            key={`${row}:0`}
-            className={CELL_CLASS_NAME}
+        // console.log(`--${row + 1}:0`);
+        newChildren.push(
+          <Cell
+            rowIndex={row + 1}
+            columnIndex={0}
+            data={venues[row]}
             style={{
               position: 'sticky',
               width: indexWidth,
@@ -274,35 +364,44 @@ export function Timeline({
               marginTop,
               zIndex: 20,
             }}
-          >
-            {venues[Math.floor(row - 1)]}
-          </div>,
+          />,
         );
       }
 
-      const anchorDate = getOffsetDate(0, view);
-
       // Iterate through events and only add those that are visible on-screen
       events.forEach((event: EventType, index: number) => {
-        const startTime = new Date(event.start);
-        const endTime = new Date(event.end);
+        const startTime = new UTCDate(event.start);
+        const endTime = new UTCDate(event.end);
 
         // Calculate start and end columns based on day difference
-        const startColumnIndex = getTimeDifference(anchorDate, startTime, view);
-        const endColumnIndex = getTimeDifference(anchorDate, endTime, view);
+        const startColumnIndex = getColumnIndex(startTime, anchorDate, view);
+        const endColumnIndex = getColumnIndex(endTime, anchorDate, view);
 
         // Determine the row index by finding the venue’s position
-        const rowIndex = venues.indexOf(event.venue) + 1; // +1 because row 0 is the header
+        const rowIndex = venues.indexOf(event.venue) + 1;
 
         // Adjust the start and end columns to fit within the visible range (with overscan)
         const visibleStartColumn = Math.max(
+          0,
           startColumnIndex,
-          fromColumn - overscanColumnCount,
+          fromColumn - overscanCount,
         );
         const visibleEndColumn = Math.min(
+          columnCount,
           endColumnIndex,
-          toColumn - indexWidth / columnWidth + overscanColumnCount,
+          toColumn + overscanCount,
         );
+
+        // Skip this event if it is invalid or outside of the visible columns/rows
+        if (
+          visibleStartColumn >= visibleEndColumn ||
+          startColumnIndex > toColumn ||
+          endColumnIndex < fromColumn ||
+          rowIndex < fromRow - overscanCount ||
+          rowIndex > toRow + overscanCount
+        ) {
+          return;
+        }
 
         // Add padding for overscan to keep label centered
         const paddingLeft =
@@ -311,39 +410,28 @@ export function Timeline({
             : 0;
 
         const paddingRight =
-          visibleEndColumn > toColumn - indexWidth / columnWidth
-            ? (visibleEndColumn - toColumn + indexWidth / columnWidth) *
-              columnWidth
+          visibleEndColumn > toColumn
+            ? (visibleEndColumn - toColumn) * columnWidth
             : 0;
 
-        // Skip this event if it is invalid or outside of the visible columns/rows
-        if (
-          visibleStartColumn >= visibleEndColumn ||
-          startColumnIndex > toColumn ||
-          endColumnIndex < fromColumn ||
-          rowIndex < fromRow ||
-          rowIndex > toRow
-        ) {
-          return;
-        }
-
+        // Determine if the event spans the full visible width
         const isFullWidth =
-          startColumnIndex <= fromColumn &&
-          endColumnIndex >= toColumn - indexWidth / columnWidth;
+          startColumnIndex <= fromColumn && endColumnIndex >= toColumn;
 
-        cells.push(
+        // const magicNumber = { Hour: 0, Day: -0.5, Month: -0.5 };
+        newChildren.push(
           <Event
             key={`event-${index}`}
             category={event.category}
             event={event}
             isFullWidth={isFullWidth}
             setEvent={setEvent}
-            setIsOpen={setIsOpen}
             style={{
               width: (visibleEndColumn - visibleStartColumn) * columnWidth,
               height: rowHeight / 2,
               top: rowIndex * rowHeight + rowHeight / 4,
               left: indexWidth + visibleStartColumn * columnWidth,
+
               paddingLeft,
               paddingRight,
             }}
@@ -355,28 +443,35 @@ export function Timeline({
 
       return (
         <div ref={ref} style={style}>
-          {cells}
+          {newChildren}
         </div>
       );
     },
   );
 
   return (
-    <Grid
-      ref={gridRef}
-      className="timeline"
-      height={height}
-      width={width}
-      columnCount={1000}
-      columnWidth={(index) => (index === 0 ? indexWidth : columnWidth)}
-      rowCount={venues.length + 1}
-      rowHeight={() => rowHeight}
-      initialScrollLeft={500 * columnWidth}
-      innerElementType={innerElementType}
-      onScroll={handleScroll}
-      overscanColumnCount={overscanColumnCount}
-    >
-      {Cell}
-    </Grid>
+    <>
+      <div
+        style={{ right: `calc(50% - 120px)` }}
+        className={`absolute top-0 z-50 h-full w-px bg-zinc-300`}
+      ></div>
+      <Grid
+        ref={gridRef}
+        className="timeline"
+        height={height}
+        width={width}
+        rowCount={rowCount + 1}
+        rowHeight={() => rowHeight}
+        overscanRowCount={overscanCount}
+        columnCount={columnCount + 1}
+        columnWidth={(index) => (index === 0 ? indexWidth : columnWidth)}
+        overscanColumnCount={overscanCount}
+        innerElementType={innerElementType}
+        onScroll={handleScroll}
+        initialScrollLeft={indexWidth + (columnCount / 2) * columnWidth}
+      >
+        {Cell}
+      </Grid>
+    </>
   );
 }

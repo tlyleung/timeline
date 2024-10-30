@@ -7,14 +7,17 @@ export type EventType = {
 };
 
 export async function getEvent(title: string) {
-  return (await getEvents('', '')).find((event) => event.title === title)!;
+  return (await getEvents(null, '')).find((event) => event.title === title)!;
 }
 
 export async function getRecentEvents() {
-  return (await getEvents('', '')).slice(0, 10);
+  return (await getEvents(null, '')).slice(0, 10);
 }
 
-export async function getEvents(category: string, filter: string) {
+export async function getEvents(
+  category: 'Art' | 'Music' | 'Theatre' | null,
+  filter: string,
+) {
   const events = [
     // Art
     {
